@@ -207,23 +207,23 @@ func (self Cron) AddCronJob(task *entity.Cron) (ids []cron.EntryID, err error) {
 }
 
 type scriptTemplateParams struct {
-	Container     string
-	ScriptContent string
-	EntryShell    string
-	ScriptName    string
+	Container     string `json:"container"`
+	ScriptContent string `json:"scriptContent"`
+	EntryShell    string `json:"entryShell"`
+	ScriptName    string `json:"scriptName"`
 }
 
-const scriptTemplateStr = `docker exec {{ .Container }} {{ .EntryShell }} -c 'cat > /{{ .ScriptName }} << "EOF"
-{{ .ScriptContent }}
+const scriptTemplateStr = `docker exec {{ .container }} {{ .entryShell }} -c 'cat > /{{ .scriptName }} << "EOF"
+{{ .scriptContent }}
 EOF
-chmod +x /{{ .ScriptName }}
-/{{ .ScriptName }}
-rm -f /{{ .ScriptName }}'
+chmod +x /{{ .scriptName }}
+/{{ .scriptName }}
+rm -f /{{ .scriptName }}'
 `
 
 func (self Cron) scriptTemplate(params *scriptTemplateParams) (string, error) {
 	buffer := new(bytes.Buffer)
 	tmpl := template.Must(template.New("docker-exec-script").Parse(scriptTemplateStr))
-	err := tmpl.Execute(buffer, params)
+	err := tmpl.Execute(buffer, function.StructToMap(params))
 	return buffer.String(), err
 }

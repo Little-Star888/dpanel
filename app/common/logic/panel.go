@@ -2,10 +2,8 @@ package logic
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
-	"github.com/donknap/dpanel/common/function"
 	"github.com/donknap/dpanel/common/service/docker/types"
 	"github.com/donknap/dpanel/common/service/storage"
 )
@@ -25,10 +23,10 @@ func (self Panel) GetPanelPath() []*types.ValueItem {
 		{Name: "export/file", Value: "./storage/export/file"},
 		{Name: "export/container", Value: "./storage/export/container"},
 		{Name: "export/image", Value: "./storage/export/image"},
-		{Name: "export/panel", Value: "./storage/export/panel"},
 		{Name: "temp", Value: "./storage/temp"},
 		{Name: "image", Value: "./storage/image"},
 		{Name: "store", Value: "./store"},
+		{Name: "lic", Value: "./dpanel.lic"},
 	}
 
 	if setting, err := (Setting{}).GetValue(SettingGroupSetting, SettingGroupSettingDocker); err == nil {
@@ -43,22 +41,9 @@ func (self Panel) GetPanelPath() []*types.ValueItem {
 		}
 	}
 
-	savePath = function.PluckArrayWalk(savePath, func(item *types.ValueItem) (*types.ValueItem, bool) {
-		item.Value = filepath.Join(storage.Local{}.GetStorageLocalPath(), item.Value)
-		return item, true
-	})
-
-	dpanelPath := "/app/server"
-	if !function.IsRunInDocker() {
-		if v, err := os.Executable(); err == nil {
-			dpanelPath = filepath.Dir(v)
-		}
-	}
-
-	savePath = append(savePath, &types.ValueItem{
-		Name:  "dpanel",
-		Value: dpanelPath,
-	})
-
 	return savePath
+}
+
+func (self Panel) SaveRootPath() string {
+	return filepath.Join(storage.Local{}.GetBackupPath(), "dpanel")
 }

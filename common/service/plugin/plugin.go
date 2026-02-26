@@ -22,12 +22,13 @@ import (
 	"github.com/we7coreteam/w7-rangine-go/v2/pkg/support/facade"
 )
 
-const PluginExplorer = "explorer"
+const ExplorerName = "explorer"
 
 type TemplateParser struct {
-	Volumes       []string
-	Command       []string
-	ContainerName string
+	Volumes       []string `json:"volumes"`
+	Command       []string `json:"command"`
+	ContainerName string   `json:"containerName"`
+	WorkingDir    string   `json:"workingDir"`
 	compose.ExtService
 }
 
@@ -49,7 +50,7 @@ func NewPlugin(name string, composeData map[string]*TemplateParser) (*plugin, er
 		return nil, err
 	}
 	buffer := new(bytes.Buffer)
-	err = parser.Execute(buffer, composeData)
+	err = parser.Execute(buffer, function.StructToMap(composeData))
 	if err != nil {
 		return nil, err
 	}

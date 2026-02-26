@@ -97,6 +97,9 @@ ifeq ($(FAMILY),nw)
     DOCKER_FILE := ./docker/Dockerfile
 endif
 
+LITE_FROM_BASE    := $(if $(filter 0,$(IS_CUSTOM)),dpanel/dpanel:beta-lite,dpanel/dpanel:lite)
+PROD_FROM_BASE    := $(if $(filter 0,$(IS_CUSTOM)),dpanel/dpanel:beta,dpanel/dpanel:latest)
+
 # --- Core Build Macros ---
 # Logical Fix: If PROJECT_NAME is overridden from command line, use it directly.
 # Otherwise, use the structured naming convention.
@@ -220,6 +223,8 @@ release:
 		--build-arg HTTPS_PROXY=${HTTP_PROXY} \
 		--secret id=GIT_TOKEN,env=GIT_TOKEN \
 		--secret id=GARBLE_SEED,env=GARBLE_SEED \
+		--build-arg LITE_FROM_BASE=${LITE_FROM_BASE} \
+        --build-arg PROD_FROM_BASE=${PROD_FROM_BASE} \
 		-f $(DOCKER_FILE) . --push
 
 	if [ "$(LITE)" = "0" ]; then \
@@ -234,6 +239,8 @@ release:
 		--build-arg HTTPS_PROXY=${HTTP_PROXY} \
 		--secret id=GIT_TOKEN,env=GIT_TOKEN \
 		--secret id=GARBLE_SEED,env=GARBLE_SEED \
+		--build-arg LITE_FROM_BASE=${LITE_FROM_BASE} \
+        --build-arg PROD_FROM_BASE=${PROD_FROM_BASE} \
 		-f $(DOCKER_FILE) . --push; \
 	fi
 	@git checkout -- "${PLUGIN_EXPLORER_IMAGE_DIR}/image-amd64.tar"

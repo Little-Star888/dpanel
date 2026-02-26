@@ -3,17 +3,19 @@ package backup
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/donknap/dpanel/common/function"
+	"github.com/mholt/archives"
 )
 
 type writer struct {
@@ -63,10 +65,10 @@ func (self writer) WriteConfigFile(fileName string, v interface{}) error {
 	return nil
 }
 
-func (self writer) WriteBlobReader(sha256 string, out io.ReadCloser) (path string, err error) {
+func (self writer) WriteBlobReader(sha256 string, reader io.ReadCloser) (path string, err error) {
 	defer func() {
-		if out != nil {
-			_ = out.Close()
+		if reader != nil {
+			_ = reader.Close()
 		}
 	}()
 	var tempFile *os.File
@@ -82,8 +84,12 @@ func (self writer) WriteBlobReader(sha256 string, out io.ReadCloser) (path strin
 		_ = tempFile.Close()
 		_ = os.Remove(tempFile.Name())
 	}()
-	gzWriter := gzip.NewWriter(tempFile)
-	_, err = io.Copy(gzWriter, out)
+
+	gzWriter, err := archives.Gz{}.OpenWriter(tempFile)
+	if err != nil {
+		return path, err
+	}
+	_, err = io.Copy(gzWriter, reader)
 	if err != nil {
 		return path, err
 	}
@@ -114,10 +120,57 @@ func (self writer) WriteBlobReader(sha256 string, out io.ReadCloser) (path strin
 	return strings.TrimLeft(path, self.tarPathPrefix), nil
 }
 
-func (self writer) getBlobPath(sha256 string) (path string, err error) {
+func (self writer) WriteBlobFiles(sha256 string, files []archives.FileInfo) (path string, err error) {
+	ctx := context.Background()
+
+	var tempFile *os.File
+	path, err = self.getBlobPath(sha256)
+	if err != nil {
+		return path, err
+	}
+	tempFile, err = os.OpenFile(filepath.Join(filepath.Dir(self.file.Name()), fmt.Sprintf("%s.%s.temp", filepath.Base(self.file.Name()), filepath.Base(path))), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return path, err
+	}
+	defer func() {
+		_ = tempFile.Close()
+		_ = os.Remove(tempFile.Name())
+	}()
+
+	format := archives.CompressedArchive{
+		Compression: archives.Gz{},
+		Archival:    archives.Tar{},
+	}
+	err = format.Archive(ctx, tempFile, files)
+	if err != nil {
+		return path, err
+	}
+	_, _ = tempFile.Seek(io.SeekStart, 0)
+
+	fileInfo, err := tempFile.Stat()
+	if err != nil {
+		return path, err
+	}
+	err = self.tarWriter.WriteHeader(&tar.Header{
+		Name:    path,
+		Size:    fileInfo.Size(),
+		Mode:    int64(fileInfo.Mode()),
+		ModTime: fileInfo.ModTime(),
+	})
+	if err != nil {
+		return path, err
+	}
+	_, err = io.Copy(self.tarWriter, tempFile)
+	if err != nil {
+		return path, err
+	}
+	return strings.TrimLeft(path, self.tarPathPrefix), nil
+}
+
+func (self writer) getBlobPath(sha256 string) (p string, err error) {
 	if b, a, ok := strings.Cut(sha256, ":"); ok {
-		return filepath.Join(self.tarPathPrefix, "blobs", b, a), nil
+		return path.Join(self.tarPathPrefix, "blobs", b, a), nil
 	} else {
-		return path, errors.New("invalid content sha256")
+		return p, errors.New("invalid content sha256")
 	}
 }

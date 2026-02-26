@@ -652,8 +652,9 @@ func (self Explorer) AttachVolume(http *gin.Context) {
 	}
 	_ = notice.Message{}.Info(".volumeMountSomeVolume")
 	path := fmt.Sprintf("/%s", function.Md5(params.Name))
-	explorerPlugin, err := plugin.NewPlugin(plugin.PluginExplorer, map[string]*plugin.TemplateParser{
-		plugin.PluginExplorer: {
+	explorerPlugin, err := plugin.NewPlugin(plugin.ExplorerName, map[string]*plugin.TemplateParser{
+		plugin.ExplorerName: {
+			WorkingDir: path,
 			ExtService: compose.ExtService{
 				External: compose.ExternalItem{
 					Volumes: []string{
@@ -682,8 +683,7 @@ func (self Explorer) AttachVolume(http *gin.Context) {
 }
 
 func (self Explorer) DestroyProxyContainer(http *gin.Context) {
-	_ = notice.Message{}.Info(".volumeMountSomeVolume")
-	explorerPlugin, err := plugin.NewPlugin(plugin.PluginExplorer, nil)
+	explorerPlugin, err := plugin.NewPlugin(plugin.ExplorerName, nil)
 	if err != nil {
 		self.JsonResponseWithError(http, err, 500)
 		return

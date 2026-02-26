@@ -3,35 +3,15 @@ package logic
 import (
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"time"
 
 	"github.com/donknap/dpanel/common/function"
 	"github.com/donknap/dpanel/common/service/storage"
-	"github.com/donknap/dpanel/common/types/define"
 	"github.com/google/uuid"
 )
 
 type AttachDownloadTask struct {
 	FilePath string
-}
-
-type AttachDownloadFileSystem struct {
-	fs.FS
-}
-
-func (self AttachDownloadFileSystem) Open(name string) (fs.File, error) {
-	cacheKey := fmt.Sprintf(storage.CacheKeyAttach, name)
-	val, ok := storage.Cache.Get(cacheKey)
-	if !ok {
-		return nil, function.ErrorMessage(define.ErrorMessageCommonDataNotFoundOrDeleted)
-	}
-	task, ok := val.(*AttachDownloadTask)
-	if !ok {
-		return nil, function.ErrorMessage(define.ErrorMessageCommonDataNotFoundOrDeleted)
-	}
-	return os.Open(task.FilePath)
 }
 
 type Attach struct{}

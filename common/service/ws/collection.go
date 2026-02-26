@@ -95,7 +95,7 @@ func (self *Collection) Leave(c *Client) {
 		//docker.Sdk.Ctx = ctx
 		//docker.Sdk.CtxCancelFunc = cancelFunc
 		//go logic.EventLogic{}.MonitorLoop()
-		if explorer, err := plugin.NewPlugin(plugin.PluginExplorer, nil); err == nil {
+		if explorer, err := plugin.NewPlugin(plugin.ExplorerName, nil); err == nil {
 			_ = explorer.Destroy()
 		}
 	}

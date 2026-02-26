@@ -19,7 +19,7 @@ func NewContainerExplorer(containerName string) (*afero.Afero, error) {
 
 	// todo 判断一下是否可以直接使用主机 sftp ，从而替换掉代理容器
 
-	explorerPlugin, err := plugin.NewPlugin(plugin.PluginExplorer, nil)
+	explorerPlugin, err := plugin.NewPlugin(plugin.ExplorerName, nil)
 	if err != nil {
 		return nil, err
 	}

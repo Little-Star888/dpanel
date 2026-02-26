@@ -5,6 +5,6 @@ import (
 )
 
 type SiteContainerInfoOption struct {
-	Id   string
-	Info container.InspectResponse
+	Id   string                    `json:"id"`
+	Info container.InspectResponse `json:"info"`
 }

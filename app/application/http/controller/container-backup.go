@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,10 +38,11 @@ type ContainerBackup struct {
 
 func (self ContainerBackup) Create(http *gin.Context) {
 	type ParamsValidate struct {
-		Id               string   `json:"id" binding:"required"`
-		BackupImage      string   `json:"backupImage"`
-		BackupVolume     string   `json:"backupVolume"`
-		BackupVolumeList []string `json:"backupVolumeList"`
+		Id                         string   `json:"id" binding:"required"`
+		EnableBackupImage          bool     `json:"enableBackupImage"`
+		EnableBackupImageContainer bool     `json:"enableBackupImageContainer"`
+		EnableBackupVolume         bool     `json:"enableBackupVolume"`
+		BackupVolumeList           []string `json:"backupVolumeList"`
 	}
 	params := ParamsValidate{}
 	if !self.Validate(http, &params) {
@@ -105,11 +107,11 @@ func (self ContainerBackup) Create(http *gin.Context) {
 	manifest := make([]backup.Manifest, 0)
 	err = func() error {
 		item := backup.Manifest{}
-		if params.BackupImage != define.ContainerBackupImageNone {
+		if params.EnableBackupImage {
 			imageId := containerInfo.Image
 			imageName := containerInfo.Config.Image
 			// 提交容器为新镜像
-			if params.BackupImage == define.ContainerBackupImageContainer {
+			if params.EnableBackupImageContainer {
 				imageDetail := function.ImageTag(containerInfo.Config.Image)
 				imageName = fmt.Sprintf("%s-%s", imageDetail.Uri(), backupTime)
 
@@ -147,7 +149,7 @@ func (self ContainerBackup) Create(http *gin.Context) {
 			item.Image = imagePath
 		}
 
-		if params.BackupVolume != define.ContainerBackupVolumeNone {
+		if params.EnableBackupVolume {
 			if !function.IsEmptyArray(containerInfo.Mounts) {
 				for _, mount := range containerInfo.Mounts {
 					if !function.IsEmptyArray(params.BackupVolumeList) && !function.InArray(params.BackupVolumeList, mount.Destination) {
@@ -383,6 +385,12 @@ func (self ContainerBackup) Restore(http *gin.Context) {
 					}
 					settings.EndpointID = ""
 					settings.NetworkID = ""
+
+					settings.IPAMConfig.IPv6Address = ""
+					settings.IPAMConfig.IPv4Address = ""
+					settings.Gateway = ""
+					settings.IPAddress = "" // 这里把 Ip 置空，直接采用网络的子网自动分配，否则可能会造成 ip 与网络不
+
 					networkingConfig.EndpointsConfig[name] = settings
 				}
 			}
@@ -410,9 +418,10 @@ func (self ContainerBackup) Restore(http *gin.Context) {
 		for _, volume := range item.Volume {
 			destPath := "/"
 			for _, mount := range containerInfo.Mounts {
-				if strings.HasSuffix(function.Sha256([]byte(mount.Destination)), filepath.Base(volume)) {
+				if strings.HasSuffix(function.Sha256([]byte(mount.Destination)), path.Base(volume)) {
 					// 导出的数据是按最后一个目录或是文件名存放，所以需要脱一级目录做为根目录
-					destPath = filepath.Dir(mount.Destination)
+					destPath = path.Dir(mount.Destination)
+					break
 				}
 			}
 			reader, _ := b.Reader.ReadBlobs(volume)
@@ -421,7 +430,8 @@ func (self ContainerBackup) Restore(http *gin.Context) {
 			if options, err := imports.NewFileImport(destPath, imports.WithImportTar(tarReader)); err == nil {
 				err = docker.Sdk.ContainerImport(docker.Sdk.Ctx, newContainerName, options)
 				if err != nil {
-					slog.Warn("container backup restore", "error", err)
+					self.JsonResponseWithError(http, err, 500)
+					return
 				}
 			}
 			_ = gzReader.Close()

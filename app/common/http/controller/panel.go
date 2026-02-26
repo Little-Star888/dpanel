@@ -1,24 +1,30 @@
 package controller
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/docker/go-units"
 	"github.com/donknap/dpanel/app/common/logic"
+	"github.com/donknap/dpanel/common/accessor"
+	"github.com/donknap/dpanel/common/dao"
+	"github.com/donknap/dpanel/common/entity"
 	"github.com/donknap/dpanel/common/function"
+	"github.com/donknap/dpanel/common/service/docker"
+	"github.com/donknap/dpanel/common/service/docker/backup"
 	"github.com/donknap/dpanel/common/service/docker/types"
 	"github.com/donknap/dpanel/common/service/storage"
 	"github.com/donknap/dpanel/common/types/define"
 	"github.com/gin-gonic/gin"
 	"github.com/mholt/archives"
 	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/we7coreteam/w7-rangine-go/v2/pkg/support/facade"
 	"github.com/we7coreteam/w7-rangine-go/v2/src/http/controller"
 )
 
@@ -52,11 +58,11 @@ func (self Panel) Usage(http *gin.Context) {
 			UsedSize:    "",
 			UsedPercent: 0,
 		}
-		item.Value = filepath.Clean(item.Value)
-		if _, err := os.Stat(item.Value); errors.Is(err, os.ErrNotExist) {
+		realPath := filepath.Join(storage.Local{}.GetStorageLocalPath(), filepath.Clean(item.Value))
+		if _, err := os.Stat(realPath); errors.Is(err, os.ErrNotExist) {
 			return nil, false
 		}
-		if v, err := function.PathSize(item.Value); err == nil {
+		if v, err := function.PathSize(realPath); err == nil {
 			usageItem.Used = v
 		} else {
 			usageItem.Used = 0
@@ -80,7 +86,10 @@ func (self Panel) Usage(http *gin.Context) {
 
 func (self Panel) Backup(http *gin.Context) {
 	type ParamsValidate struct {
-		BackupPath []string `json:"backupPath"`
+		BackupVolumePathList   []string `json:"backupPathList"`
+		EnableBackupVolume     bool     `json:"enableBackupVolume"`
+		EnableBackupApp        bool     `json:"enableBackupApp"`
+		IgnoreVolumePathPrefix []string `json:"ignoreVolumePathPrefix"`
 	}
 
 	params := ParamsValidate{}
@@ -88,50 +97,98 @@ func (self Panel) Backup(http *gin.Context) {
 		return
 	}
 
+	params.IgnoreVolumePathPrefix = append(params.IgnoreVolumePathPrefix, "backup/dpanel/dpanel-main", "storage/temp")
+
 	panelAllPath := function.PluckArrayWalk((logic.Panel{}).GetPanelPath(), func(item *types.ValueItem) (string, bool) {
 		return item.Value, true
 	})
 
-	if function.IsEmptyArray(params.BackupPath) {
-		params.BackupPath = panelAllPath
+	if function.IsEmptyArray(params.BackupVolumePathList) {
+		params.BackupVolumePathList = panelAllPath
 	}
 
-	backupFile, err := storage.Local{}.CreateSaveFile(filepath.Join("export", "panel", fmt.Sprintf("dpanel-backup-%s.tar.zst", time.Now().Format(define.DateYmdHis))))
+	backupTime := time.Now().Format(define.DateYmdHis)
+	suffix := fmt.Sprintf("dpanel-main-%s", backupTime)
+	backupRelTar := filepath.Join("dpanel", suffix+".snapshot")
+	backupTar := filepath.Join(storage.Local{}.GetBackupPath(), backupRelTar)
+
+	b, err := backup.New(
+		backup.WithTarPathPrefix("dpanel"),
+		backup.WithPath(backupTar),
+		backup.WithWriter(),
+	)
 	if err != nil {
 		self.JsonResponseWithError(http, err, 500)
 		return
 	}
 	defer func() {
-		_ = backupFile.Close()
+		_ = b.Close()
 	}()
 
-	targetFile := function.PluckArrayMapWalk(params.BackupPath, func(item string) (string, string, bool) {
+	info := backup.Info{
+		Extend: gin.H{
+			"Version": facade.GetConfig().Get("app.version"),
+			"Family":  facade.GetConfig().Get("app.family"),
+		},
+		Backup: &entity.Backup{
+			ID:          0,
+			ContainerID: "",
+			Setting: &accessor.BackupSettingOption{
+				BackupTargetType: define.DockerContainerBackupTypeSnapshot,
+				BackupTar:        filepath.ToSlash(backupRelTar),
+				VolumePathList:   make([]string, 0),
+				Status:           define.DockerImageBuildStatusSuccess,
+			},
+			CreatedAt: time.Now(),
+		},
+	}
+	info.Docker, err = docker.Sdk.Client.ServerVersion(b.Context())
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+	params.BackupVolumePathList = append(params.BackupVolumePathList, "dpanel.lic")
+	manifest := make([]backup.Manifest, 0)
+	targetFile, err := archives.FilesFromDisk(b.Context(), nil, function.PluckArrayMapWalk(params.BackupVolumePathList, func(item string) (string, string, bool) {
 		if !function.InArray(panelAllPath, item) {
 			return "", "", false
 		}
-		return item, filepath.ToSlash(item), true
+		return filepath.Join(storage.Local{}.GetStorageLocalPath(), item), item, true
+	}))
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+	hash := make([]string, 0)
+	targetFile = function.PluckArrayWalk(targetFile, func(item archives.FileInfo) (archives.FileInfo, bool) {
+		if ok := function.InArrayWalk(params.IgnoreVolumePathPrefix, func(p string) bool {
+			return strings.HasPrefix(item.NameInArchive, p)
+		}); ok {
+			return item, false
+		}
+		hash = append(hash, item.NameInArchive)
+		return item, true
 	})
 
-	zipCtx := context.Background()
-	files, err := archives.FilesFromDisk(zipCtx, nil, targetFile)
+	volumePath, err := b.Writer.WriteBlobFiles(function.Sha256Struct(hash), targetFile)
 	if err != nil {
 		self.JsonResponseWithError(http, err, 500)
 		return
 	}
-
-	format := archives.CompressedArchive{
-		Compression: archives.Zstd{},
-		Archival:    archives.Tar{},
-	}
-
-	err = format.Archive(zipCtx, backupFile, files)
+	manifest = append(manifest, backup.Manifest{
+		Volume: []string{
+			volumePath,
+		},
+	})
+	err = b.Writer.WriteConfigFile("manifest.json", manifest)
 	if err != nil {
 		self.JsonResponseWithError(http, err, 500)
 		return
 	}
+	err = b.Writer.WriteConfigFile("info.json", info)
 
 	self.JsonResponseWithoutError(http, gin.H{
-		"path": backupFile.Name(),
+		"path": backupTar,
 	})
 	return
 }
@@ -148,7 +205,7 @@ func (self Panel) Proxy(http *gin.Context) {
 }
 
 func (self Panel) BackupList(http *gin.Context) {
-	root := filepath.Join(storage.Local{}.GetSaveRootPath(), "export", "panel")
+	root := logic.Panel{}.SaveRootPath()
 	type backupFileItem struct {
 		Path      string    `json:"path"`
 		CreatedAt time.Time `json:"createdAt"`
@@ -156,7 +213,7 @@ func (self Panel) BackupList(http *gin.Context) {
 	}
 	backupList := make([]backupFileItem, 0)
 	err := filepath.Walk(root, func(path string, info fs.FileInfo, err error) error {
-		if path == root {
+		if path == root || !strings.HasSuffix(path, ".snapshot") {
 			return nil
 		}
 		if info.IsDir() {
@@ -196,7 +253,7 @@ func (self Panel) BackupDelete(http *gin.Context) {
 		return
 	}
 	for _, s := range params.Name {
-		backupFilePath := filepath.Join(storage.Local{}.GetSaveRootPath(), "export", "panel", function.PathClean(s))
+		backupFilePath := filepath.Join(logic.Panel{}.SaveRootPath(), function.PathClean(s))
 		if _, err := os.Stat(backupFilePath); errors.Is(err, os.ErrNotExist) {
 			self.JsonResponseWithError(http, err, 500)
 			return
@@ -220,7 +277,7 @@ func (self Panel) BackupDownload(http *gin.Context) {
 	if !self.Validate(http, &params) {
 		return
 	}
-	backupFilePath := filepath.Join(storage.Local{}.GetSaveRootPath(), "export", "panel", function.PathClean(params.Name))
+	backupFilePath := filepath.Join(logic.Panel{}.SaveRootPath(), function.PathClean(params.Name))
 	if _, err := os.Stat(backupFilePath); err != nil {
 		self.JsonResponseWithError(http, err, 500)
 		return
@@ -236,12 +293,87 @@ func (self Panel) BackupDownload(http *gin.Context) {
 	return
 }
 
-func (self Panel) Restore(http *gin.Context) {
+func (self Panel) BackupRestore(http *gin.Context) {
 	type ParamsValidate struct {
-		FileName string `json:"fileName"`
+		Name string `json:"name"`
 	}
 	params := ParamsValidate{}
 	if !self.Validate(http, &params) {
 		return
 	}
+	backupTar := filepath.Join(logic.Panel{}.SaveRootPath(), function.PathClean(params.Name))
+	if _, err := os.Stat(backupTar); err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+	b, err := backup.New(
+		backup.WithTarPathPrefix("dpanel"),
+		backup.WithPath(backupTar),
+		backup.WithReader(),
+	)
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+	defer func() {
+		b.Close()
+	}()
+	manifest, err := b.Reader.Manifest()
+	if err != nil || function.IsEmptyArray(manifest) || len(manifest) == 0 {
+		self.JsonResponseWithError(http, function.ErrorMessage(define.ErrorMessageCommonDataNotFoundOrDeleted), 500)
+		return
+	}
+
+	err = b.Reader.Extract(manifest[0].Volume[0], storage.Local{}.GetStorageLocalPath())
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+	self.JsonSuccessResponse(http)
+	return
+}
+
+func (self Panel) BackupImport(http *gin.Context) {
+	type ParamsValidate struct {
+		Name string `json:"name"`
+	}
+	params := ParamsValidate{}
+	if !self.Validate(http, &params) {
+		return
+	}
+
+	realTarFilePath := storage.Local{}.GetSaveRealPath(params.Name)
+	if _, err := os.Stat(realTarFilePath); err != nil {
+		self.JsonResponseWithError(http, function.ErrorMessage(define.ErrorMessageContainerBackupImportFileFailed), 500)
+		return
+	}
+	defer func() {
+		_ = os.Remove(realTarFilePath)
+	}()
+
+	b, err := backup.New(
+		backup.WithPath(realTarFilePath),
+		backup.WithReader(),
+	)
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+	info, err := b.Reader.Info()
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+	_ = b.Close()
+	backupTarFile := filepath.Join(storage.Local{}.GetStorageLocalPath(), "backup", info.Backup.Setting.BackupTar)
+	_ = os.MkdirAll(filepath.Dir(backupTarFile), os.ModePerm)
+	err = os.Rename(realTarFilePath, backupTarFile)
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+	info.Backup.ID = 0
+	_ = dao.Backup.Save(info.Backup)
+	self.JsonSuccessResponse(http)
+	return
 }

@@ -30,7 +30,6 @@ func (provider *Provider) Register(httpServer *httpserver.Server) {
 		cors.POST("/common/attach/upload", controller.Attach{}.Upload)
 		cors.POST("/common/attach/delete", controller.Attach{}.Delete)
 		cors.GET("/common/attach/download", controller.Attach{}.Download)
-		//engine.StaticFS("/dpanel/static/attach/download", http.FS(logic.AttachDownloadFileSystem{}))
 
 		// 仓库相关
 		cors.POST("/common/registry/create", controller.Registry{}.Create)
@@ -126,6 +125,8 @@ func (provider *Provider) Register(httpServer *httpserver.Server) {
 		cors.POST("/common/panel/backup-list", controller.Panel{}.BackupList)
 		cors.POST("/common/panel/backup-delete", controller.Panel{}.BackupDelete)
 		cors.POST("/common/panel/backup-download", controller.Panel{}.BackupDownload)
+		cors.POST("/common/panel/backup-restore", controller.Panel{}.BackupRestore)
+		cors.POST("/common/panel/backup-import", controller.Panel{}.BackupImport)
 	})
 
 	httpServer.RegisterRouters(func(engine *gin.Engine) {

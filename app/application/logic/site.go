@@ -203,7 +203,7 @@ func (self Site) MakeNginxConf(setting accessor.SiteDomainSettingOption) error {
 	defer func() {
 		_ = vhostFile.Close()
 	}()
-	err = parser.ExecuteTemplate(vhostFile, "vhost.tpl", setting)
+	err = parser.ExecuteTemplate(vhostFile, "vhost.tpl", function.StructToMap(setting))
 	if err != nil {
 		return err
 	}

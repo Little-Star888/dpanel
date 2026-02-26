@@ -102,8 +102,8 @@ func (self Compose) ContainerDeploy(http *gin.Context) {
 		define.DockerRemoteTypeSSH,
 		define.DockerRemoteTypeTcp,
 	}, docker.Sdk.DockerEnv.RemoteType) {
-		explorerPlugin, err := plugin.NewPlugin(plugin.PluginExplorer, map[string]*plugin.TemplateParser{
-			"explorer": {
+		explorerPlugin, err := plugin.NewPlugin(plugin.ExplorerName, map[string]*plugin.TemplateParser{
+			plugin.ExplorerName: {
 				Volumes: []string{
 					fmt.Sprintf("%s:%s", tasker.Project.WorkingDir, tasker.Project.WorkingDir),
 				},

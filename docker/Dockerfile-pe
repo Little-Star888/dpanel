@@ -1,4 +1,6 @@
 # syntax=docker/dockerfile:1
+ARG LITE_FROM_BASE=dpanel/dpanel:lite
+ARG PROD_FROM_BASE=dpanel/dpanel:latest
 
 FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS source
 
@@ -62,7 +64,7 @@ RUN --mount=type=secret,id=GARBLE_SEED \
         echo "Unsupported architecture: $TARGETARCH" && exit 1; \
     fi
 
-FROM dpanel/dpanel:lite AS lite
+FROM $LITE_FROM_BASE AS lite
 
 ARG APP_FAMILY
 ARG APP_VERSION
@@ -73,7 +75,7 @@ ENV APP_FAMILY=$APP_FAMILY
 
 COPY --from=builder /src/runtime/dpanel-pe-musl-${TARGETARCH} /app/server/dpanel
 
-FROM dpanel/dpanel:latest AS production
+FROM $PROD_FROM_BASE AS production
 
 ARG APP_FAMILY
 ARG APP_VERSION
