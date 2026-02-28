@@ -120,7 +120,7 @@ define go_build
 	GOTOOLCHAIN=local CGO_ENABLED=1 GOOS=$(1) GOARCH=$(2) GOARM=$(3) CC=$(4) \
 	$(GO_EXECUTABLE) build -p $(CPUS) -trimpath \
 	-ldflags="-s -w -X 'main.DPanelVersion=${APP_VER}'" \
-	-tags "${FAMILY},w7_rangine_release" \
+	-tags "${FAMILY},w7_rangine_release,containers_image_openpgp" \
 	-o ${GO_TARGET_DIR}/$(TARGET_BIN) ${GO_SOURCE_DIR}/*.go
 	@cp ${GO_SOURCE_DIR}/config.yaml ${GO_TARGET_DIR}/config.yaml
 endef

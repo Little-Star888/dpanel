@@ -1308,7 +1308,7 @@
   "notification.listUseTime": "Time Used",
   "notification.listUseUser": "Custom",
   "notification.listVersion": "Version",
-  "notification.login": "Please login first",
+  "notification.unauthorized": "Please login first",
   "notification.proLicenseFileIsCorrect": "Pro license file error, upload correct file or contact developer",
   "notification.settingBasicEmailInvalid": "Email send failed, email service misconfigured",
   "notification.siteDomainCertAddTxtFailed": "DNS verification failed, add TXT record manually and retry",

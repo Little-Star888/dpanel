@@ -1308,7 +1308,7 @@
   "notification.listUseTime": "所要時間",
   "notification.listUseUser": "カスタム",
   "notification.listVersion": "バージョン",
-  "notification.login": "先にログインしてください",
+  "notification.unauthorized": "先にログインしてください",
   "notification.proLicenseFileIsCorrect": "Proライセンスファイルエラー、正しいファイルをアップロードするか開発者に連絡",
   "notification.settingBasicEmailInvalid": "メール送信失敗、メールサービス設定誤り",
   "notification.siteDomainCertAddTxtFailed": "DNS検証失敗、TXTレコードを手動追加して再試行",

@@ -53,7 +53,7 @@ const (
 	ErrorMessageUserUsernameOrPasswordError                 = ".usernameOrPasswordError"
 	ErrorMessageUserTwoFaEmpty                              = ".userTwoFaEmpty"
 	ErrorMessageUserTwoFaNotCorrect                         = ".userTwoFaNotCorrect"
-	ErrorMessageUserLogin                                   = ".login"
+	ErrorMessageUserLogin                                   = ".unauthorized"
 	ErrorMessageUserFounderExists                           = ".userFounderExists"
 	ErrorMessageUserPasswordConfirmFailed                   = ".userPasswordConfirmFailed"
 	ErrorMessageUserDisable                                 = ".userDisable"
